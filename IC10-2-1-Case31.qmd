@@ -1,0 +1,458 @@
+---
+title: "IC10-2-1: Data Preparation"
+subtitle: "Case 31: Employees Federal Credit Union"
+author: "Kevin Bachez"
+date: today
+format:
+  html:
+    toc: true
+    toc-location: right
+    theme: cosmo
+    page-layout: full
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+# Introduction
+
+This assignment focuses on preparing the Employees Federal Credit Union (EFCU) survey dataset for analysis using R. The data preparation process includes importing the SPSS dataset, examining variables and measurement scales, identifying missing values, recoding variables, creating new variables, and evaluating the reliability of selected measures.
+
+# Data Import
+
+```{r}
+#| label: import-data
+
+library(tidyverse)
+library(haven)
+library(labelled)
+library(janitor)
+library(sjPlot)
+library(psych)
+library(skimr)
+library(gt)
+
+# Import the original SPSS dataset
+data_raw <- read_sav("Case 31 Data_efcu_1.sav")
+
+# Check the dataset dimensions
+dim(data_raw)
+
+# View the variable names
+names(data_raw)
+
+# Preview the dataset
+head(data_raw)
+```
+
+# Data Inspection
+
+Before preparing the dataset for analysis, it is important to examine the structure of the variables, their labels, and the types of responses recorded in the SPSS file.
+
+## Variable Structure
+
+The imported dataset contains 128 observations and 34 variables. The following code examines the structure of the dataset and provides a summary of the variables.
+
+```{r}
+#| label: inspect-data
+
+# Examine dataset structure
+glimpse(data_raw)
+
+# Summarize the dataset
+summary(data_raw)
+
+# Examine SPSS variable labels
+var_label(data_raw)
+```
+
+## Data Inspection Questions
+
+**1. How many rows and columns are in the imported data?**
+
+The imported dataset contains 128 rows and 34 columns. Each row represents a survey observation, while each column represents a variable.
+
+**2. What are the variable names?**
+
+The questionnaire variables include q3 through q27, q30 through q34, q37, and q38. The dataset also includes OverallEmployeePerformace and employeeperformance.
+
+**3. Which variables look like questionnaire items, and which look like precomputed variables?**
+
+Variables beginning with "q" represent questionnaire items. OverallEmployeePerformace and employeeperformance appear to be precomputed variables measuring employee performance.
+
+**4. What is the difference between a variable label and a value label?**
+
+A variable label describes what a variable measures. A value label explains what individual response codes mean. For example, q38 measures whether a member lives in the headquarters area, while its value labels identify 1 as Yes and 2 as No.
+
+**5. Which variables contain missing values?**
+
+The missing-value analysis identifies q7, q8, and q37 as variables containing missing observations.
+
+```{r}
+#| label: missing-raw
+
+data_raw |>
+  summarise(across(everything(), \(x) sum(is.na(x)))) |>
+  pivot_longer(
+    everything(),
+    names_to = "variable",
+    values_to = "n_missing"
+  ) |>
+  filter(n_missing > 0)
+```
+
+# Create a Data Dictionary
+
+A data dictionary documents the variables in the dataset, including their names, labels, data types, number of distinct values, and value labels. This helps identify coding inconsistencies and determine which variables require cleaning.
+
+```{r}
+#| label: dictionary
+
+data_dictionary <- tibble(
+  variable = names(data_raw),
+  variable_label = map_chr(data_raw, \(x) attr(x, "label") %||% ""),
+  class = map_chr(data_raw, \(x) class(x)[1]),
+  n_distinct = map_int(data_raw, n_distinct),
+  value_labels = map_chr(
+    data_raw,
+    \(x) {
+      labs <- attr(x, "labels")
+      if (is.null(labs)) "" else str_c(labs, "=", names(labs), collapse = "; ")
+    }
+  )
+)
+
+data_dictionary |> gt()
+```
+
+## Data Dictionary Questions
+
+**1. Which variables have clear, useful labels?**
+
+Variables q3 through q6 have useful labels describing employee courtesy, helpfulness, professionalism, and availability. Variables q13 through q26 identify specific credit union services, while q27 indicates whether members currently have a loan.
+
+**2. Which labels should be revised for readability in your report?**
+
+The label for q8 should be revised because it incorrectly refers to statement frequency instead of members' opinions about loan rates. The q38 label could be expanded to "Lives in Headquarters Area." The two precomputed employee performance variables should also be clearly identified as existing calculated variables rather than original questionnaire responses.
+
+**3. Which variables are nominal, ordinal, or approximately interval? Explain at least three using the questionnaire.**
+
+- **Nominal:** q38 measures whether members live in the headquarters area (Yes/No). These categories have no numerical ranking.
+- **Ordinal:** q13 measures awareness and use of regular share accounts, with three ordered categories ranging from awareness and use to being unaware.
+- **Approximately interval:** q3 through q6 measure employee proficiency using five-point agreement scales. For this assignment, these ratings may be treated as approximately interval when evaluating a multi-item index.
+
+**4. Which value labels are essential for interpreting the data, and which are predictable from the response scale?**
+
+Value labels are especially important for q13 through q26 because the numerical codes distinguish between using a service, knowing about it without using it, and being unaware of it. Labels for q7, q8, and q37 are also important because they include special responses such as "No Opinion." Five-point agreement scales for q3 through q6 and q30 through q34 are more predictable, although documenting their endpoints remains necessary.
+
+# Improve the Metadata with Case Coding Instructions
+
+Variable labels and value labels are important because they explain what each survey question measures and what the response codes mean. The original SPSS dataset contains some incomplete or incorrect labels that need to be addressed.
+
+## Coding Instructions (Case Exhibit 31.2)
+
+| Response Scale | Coding |
+|---|---|
+| Strongly disagree to strongly agree | 1 = Strongly disagree; 5 = Strongly agree |
+| Very high to very low | 1 = Very high; 5 = Very low; 6 = No opinion |
+| Too often to never | 1 = Too often; 5 = Never |
+| Excellent to poor | 1 = Excellent; 4 = Poor |
+| Excellent to very poor | 1 = Excellent; 5 = Very poor; 6 = No answer |
+| Yes/No | 1 = Yes; 2 = No; 3 = No answer |
+| Awareness/use | 1 = Aware and have used; 2 = Aware but have not used; 3 = Unaware |
+
+## Missing Value Labels
+
+**Question: Which codes in the original SPSS file have no label?**
+
+The original dataset has incomplete value labels for several survey items. In particular, some awareness variables do not fully document the third response category (Unaware), and some Yes/No variables are missing the label for code 3 (No answer). These labels need to be corrected using the coding instructions from Case Exhibit 31.2.
+
+```{r}
+#| label: label-demo
+
+# Examine variable and value labels
+var_label(data_raw$q7)
+val_labels(data_raw$q7)
+
+# Demonstrate adding a value label without changing the original data
+data_raw$q7 |>
+  add_value_labels("Refused" = 7) |>
+  val_labels()
+
+# Demonstrate reading and removing a variable label
+data_raw$q7 |> var_label()
+data_raw$q7 |> remove_var_label() |> var_label()
+
+# Confirm original value labels remain unchanged
+data_raw$q7 |> val_labels()
+```
+
+## Fixing Metadata Problems
+
+The original dataset contains incomplete value labels for several questionnaire items. Using the Case 31 questionnaire and coding instructions, the missing labels are added to a new dataset called `data_labelled`.
+
+The two precomputed employee performance variables are excluded from this new dataset because they are not original survey questions. The original `data_raw` dataset remains unchanged.
+
+```{r}
+#| label: add-labels
+
+# Five-point agreement scale
+five_pt_likert <- c(
+  "Strongly Disagree" = 1,
+  "Disagree" = 2,
+  "Uncertain" = 3,
+  "Agree" = 4,
+  "Strongly Agree" = 5
+)
+
+# Create a labelled copy without precomputed variables
+data_labelled <- data_raw |>
+  select(-c(OverallEmployeePerformace, employeeperformance)) |>
+  mutate(
+    across(
+      c(q3:q6, q30:q34),
+      \(x) set_value_labels(x, five_pt_likert)
+    )
+  )
+
+# Add missing response labels
+data_labelled <- data_labelled |>
+  mutate(
+    across(
+      q13:q26,
+      \(x) add_value_labels(x, "Unaware" = 3)
+    ),
+    across(
+      c(q11, q12, q27, q38),
+      \(x) add_value_labels(x, "No answer" = 3)
+    ),
+    q37 = set_value_labels(
+      q37,
+      c(
+        "Excellent" = 1,
+        "Good" = 2,
+        "Average" = 3,
+        "Poor" = 4,
+        "Very Poor" = 5,
+        "No answer" = 6
+      )
+    )
+  )
+
+# Verify updated labels
+val_labels(data_labelled$q13)
+val_labels(data_labelled$q11)
+val_labels(data_labelled$q37)
+
+# Check dimensions
+dim(data_labelled)
+```
+
+# Create an Analysis Copy
+
+The original SPSS dataset includes questionnaire variables and two precomputed employee performance variables. For this assignment, an analysis copy is created using only the questionnaire variables so that any new indexes can be independently evaluated and constructed.
+
+```{r}
+#| label: analysis-copy
+
+data <- data_labelled |>
+  select(matches("^q\\d+$"))
+
+names(data)
+```
+
+## Analysis Copy Question
+
+**Why could using an already computed index be a problem when the purpose of this assignment is to evaluate and construct measures?**
+
+Using an already computed index could be problematic because we would not know whether the original variables were combined appropriately. Creating the measure ourselves allows us to examine the individual questions, evaluate their reliability, and determine whether the items represent the same underlying construct.
+
+## Data-Quality Checks
+
+The following analysis checks the observed values of each questionnaire variable and identifies the number and percentage of missing responses. These values are compared with the coding instructions in Case Exhibit 31.2 to identify potential data-quality problems.
+
+```{r}
+#| label: quality-checks
+
+library(gt)
+
+data |>
+  # Plain numbers are needed to stack columns that have different labels
+  mutate(across(everything(), as.numeric)) |>
+  pivot_longer(everything(), names_to = "variable") |>
+  summarise(
+    values_observed = str_c(sort(unique(value)), collapse = ", "),
+    n_missing = sum(is.na(value)),
+    pct_missing = round(mean(is.na(value)) * 100, 1),
+    .by = variable
+  ) |>
+  gt()
+```
+
+### Data-Quality Question
+
+**Does any variable contain a value that the questionnaire does not define?**
+
+Based on the observed values and the questionnaire's coding instructions, the variables do not appear to contain values outside their defined response ranges. However, some variables contain missing responses, particularly q7, q8, and q37. Additional data preparation is necessary to ensure that special responses, such as "No Opinion" and "No answer," are handled appropriately before statistical analysis.
+
+# Recode Special Responses and Reverse-Code Items
+
+Some survey questions contain special response categories, such as "No Opinion" and "No Answer." These responses should not be treated as numerical ratings because they do not represent an opinion on the measurement scale.
+
+## No Opinion and No Answer Responses
+
+According to Case Exhibit 31.2, questions q7 and q8 use code 6 for "No Opinion," while q37 uses code 6 for "No Answer." These responses must be treated as missing values before further analysis.
+
+```{r}
+#| label: check-no-opinion
+
+data |>
+  summarise(across(c(q7, q8, q37), \(x) sum(x == 6, na.rm = TRUE)))
+```
+
+```{r}
+#| label: recode-no-opinion
+
+data <- data |>
+  mutate(across(c(q7, q8, q37), \(x) na_if(x, 6)))
+```
+
+The special response categories were checked and recoded to missing values where applicable. This prevents responses such as "No Opinion" from being incorrectly included in calculations of means, correlations, or other statistical analyses.
+
+## Reverse Coding
+
+Reverse coding changes the direction of a numerical scale so that higher values represent more favorable responses.
+
+According to the Case 31 questionnaire, q7, q8, and q37 use five-point scales, while q10 uses a four-point scale. These items need to be reversed so that higher values represent more favorable evaluations.
+
+The reverse-coding formula is:
+
+**Reversed value = Minimum + Maximum - Original value**
+
+```{r}
+#| label: reverse-code
+
+data <- data |>
+  mutate(
+    q7r = 6 - q7,
+    q8r = 6 - q8,
+    q10r = 5 - q10,
+    q37r = 6 - q37
+  ) |>
+  set_variable_labels(
+    q7r = "Savings rates (reversed: higher = higher rates)",
+    q8r = "Rates, q8 (reversed: higher = higher rates)",
+    q10r = "Statement accuracy (reversed: higher = better)",
+    q37r = "Overall rating (reversed: higher = better)"
+  ) |>
+  set_value_labels(
+    q7r = c(
+      "Very Low" = 1,
+      "Low" = 2,
+      "Average" = 3,
+      "High" = 4,
+      "Very High" = 5
+    ),
+    q8r = c(
+      "Very Low" = 1,
+      "Low" = 2,
+      "Average" = 3,
+      "High" = 4,
+      "Very High" = 5
+    ),
+    q10r = c(
+      "Poor" = 1,
+      "Fair" = 2,
+      "Good" = 3,
+      "Excellent" = 4
+    ),
+    q37r = c(
+      "Very Poor" = 1,
+      "Poor" = 2,
+      "Average" = 3,
+      "Good" = 4,
+      "Excellent" = 5
+    )
+  )
+```
+
+### Reverse-Coding Questions
+
+**1. Why is a reversal inappropriate for q9? How could you code q9 to answer "was the frequency about right?" instead?**
+
+Reverse coding is inappropriate for q9 because the response scale measures how frequently members receive financial statements, and the most favorable response is "About Right," which is in the middle of the scale. Reversing the numbers would not correctly represent satisfaction.
+
+A better approach would be to create a binary variable where 1 means the frequency was "About Right" and 0 means the frequency was either too frequent or not frequent enough.
+
+**2. Why should q13 to q26 not be reversed or averaged into one score? What would be a more appropriate way to summarize them?**
+
+Questions q13 through q26 measure members' awareness and use of different credit union services. These responses are categories rather than a traditional satisfaction rating scale. Averaging them would combine different services into a number that may not have a clear interpretation.
+
+A better approach would be to calculate frequencies and percentages for each awareness category and service. This would help identify which services members use, know about, or are unaware of.
+
+### Awareness Items as Ordinal Scale
+
+For this exercise, the awareness variables are treated as ordinal measures. New reverse-coded variables are created so that higher values represent greater awareness and use of credit union services. The original variables are preserved.
+
+```{r}
+#| label: reverse-awareness
+
+data <- data |>
+  mutate(
+    across(
+      q13:q26,
+      \(x) 4 - as.numeric(x),
+      .names = "{.col}r"
+    )
+  ) |>
+  set_variable_labels(
+    q13r = "Regular share accounts (higher = greater awareness)"
+  )
+
+# Verify the reverse coding of the first awareness variable
+data |>
+  count(q13, q13r)
+```
+
+## Verify the Recoding
+
+After reverse coding the variables, it is important to compare the original responses with their reversed values. Cross-tabulations are used to verify that the coding direction has changed correctly and that missing values remain missing.
+
+```{r}
+#| label: verify-recode
+
+data |> count(q7, q7r)
+data |> count(q8, q8r)
+data |> count(q10, q10r)
+data |> count(q37, q37r)
+```
+
+### Interpretation
+
+The cross-tabulations verify that the reverse coding was performed correctly. For the five-point variables, the original value of 1 becomes 5, while the original value of 5 becomes 1. For q10, the original four-point scale was reversed so that 1 becomes 4 and 4 becomes 1.
+
+Missing responses remain missing after the transformation. As a result, higher reversed scores consistently represent more favorable evaluations, making these variables easier to interpret in subsequent analyses.
+
+# Export Cleaned Dataset
+
+The cleaned dataset was exported as an SPSS file for future statistical analysis. The original raw dataset was preserved.
+
+```{r}
+#| label: export-cleaned-data
+
+# Export the cleaned dataset
+haven::write_sav(data, "Case31_Cleaned.sav")
+
+# Verify the exported file exists
+file.exists("Case31_Cleaned.sav")
+```
+
+# Appendix
+
+## Project Files
+
+The R code, data preparation procedures, and rendered HTML report are available through the following links:
+
+- **GitHub Repository:** [View Repository](https://github.com/kebachez/IC10-2-1-Case31.git)
+- **GitHub Pages:** [View Published Report](REPLACE_WITH_GITHUB_PAGES_URL)
