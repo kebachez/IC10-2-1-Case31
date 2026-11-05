@@ -455,4 +455,4 @@ file.exists("Case31_Cleaned.sav")
 The R code, data preparation procedures, and rendered HTML report are available through the following links:
 
 - **GitHub Repository:** [View Repository](https://github.com/kebachez/IC10-2-1-Case31.git)
-- **GitHub Pages:** [View Published Report](REPLACE_WITH_GITHUB_PAGES_URL)
+- **GitHub Pages:** [View Published Report](https://kebachez.github.io/IC10-2-1-Case31/)
